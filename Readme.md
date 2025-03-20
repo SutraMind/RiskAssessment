@@ -3,9 +3,9 @@
 This repository contains research on an AI-driven risk assessment framework that identifies security vulnerabilities directly from specification documents. By leveraging retrieval-augmented generation (RAG), large language models (LLMs), and human-in-the-loop feedback, the framework enables proactive risk detection and mitigation throughout the software development lifecycle.
 ## 🚀 Attention! 🚀  
 
-The **full code** for the AI-Driven Risk Assessment Framework is coming **within 3 days (March 19th, 2025)!**  
+The workable product has been deployed in free web server. Please wait for the response for the first time because the free server takes time for the first time. Be patient.
 
-Stay tuned for the release and be ready to explore an advanced system for security vulnerability detection using **RAG, LLMs, and human-in-the-loop feedback!**  
+Stay tuned for other interesting updates. 
 
 🔔 **Star this repository** to get notified when the code drops! 🚀  
 
