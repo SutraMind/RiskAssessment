@@ -26,7 +26,7 @@ state = FeatureState()
 def generate_summary_and_extract_features(pdf_path):
     """Generate summary and extract features from PDF file using the API"""
     try:
-        base_url = "http://localhost:8000"
+        base_url = "https://risk-assessment-app.onrender.com"
         
         # Read the PDF file and encode it as base64
         with open(pdf_path, 'rb') as file:
@@ -79,7 +79,7 @@ def generate_summary_and_extract_features(pdf_path):
 def re_evaluate_features(previous_features, feedback):
     """Re-evaluate features based on feedback"""
     try:
-        base_url = "http://localhost:8000"
+        base_url = "https://risk-assessment-app.onrender.com"
         endpoint = f"{base_url}/features/re-evaluate"
         
         payload = {
@@ -121,6 +121,7 @@ async def process_documents_with_status(uploaded_file):
             "Processing document...",
             "Creating Knowledge graph...",
             "Retrieving Nodes and Edges...",
+            "Thinking...",
             "Generating Response..."
         ]
         
@@ -151,6 +152,8 @@ async def handle_feedback_with_status(feedback, features):
     if not feedback.strip():
         yield (
             "Please provide feedback before submitting.",  # features output
+            gr.update(visible=True),  # feedback section
+            gr.update(visible=True),  # risk section
             "Feedback cannot be empty"  # status message
         )
         return
@@ -172,6 +175,8 @@ async def handle_feedback_with_status(feedback, features):
                 break
             yield (
                 "",  # features output (empty while processing)
+                gr.update(visible=True),  # feedback section
+                gr.update(visible=True),  # risk section
                 message  # status message
             )
             await asyncio.sleep(5)  # Shorter interval for feedback processing
@@ -182,6 +187,8 @@ async def handle_feedback_with_status(feedback, features):
         # Yield final results
         yield (
             new_features,
+            gr.update(visible=True),
+            gr.update(visible=True),
             "Feedback processed successfully!"
         )
 
@@ -190,31 +197,83 @@ def approve_features(features):
     state.approved_features = features
     return "Features have been approved!", gr.update(visible=False), gr.update(visible=True)
 
-def analyze_risks():
-    """Analyze risks based on approved features"""
+async def analyze_risks_with_status(features):
+    """Analyze risks with status updates while waiting for API response"""
     try:
         if not state.approved_features:
-            return "Please approve features first before analyzing risks."
-            
-        base_url = "http://localhost:8000"
-        endpoint = f"{base_url}/risks/analyze"
+            yield (
+                "Please approve features first before analyzing risks.",
+                "No approved features found"
+            )
+            return
+
+        base_url = "https://risk-assessment-app.onrender.com"
+        endpoint = f"{base_url}/api/risks/analyze"
         
         payload = {
             "features": state.approved_features,
             "srs_content": state.srs_content,
             "project_summary": state.project_summary
         }
-        
-        response = requests.post(
-            endpoint,
-            headers={'Content-Type': 'application/json'},
-            json=payload
+
+        # Show initial status
+        yield (
+            "",
+            "Initiating risk analysis..."
         )
-        response.raise_for_status()
-        
-        return response.json().get("risk_analysis", "No risks identified")
+
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: requests.post(
+                    endpoint,
+                    headers={'Content-Type': 'application/json'},
+                    json=payload
+                )
+            )
+
+            # Status messages while waiting
+            messages = [
+                "Analyzing security risks...",
+                "Identifying vulnerabilities...",
+                "Evaluating compliance requirements...",
+                "Generating mitigation strategies...",
+                "Preparing final report..."
+            ]
+
+            for message in messages:
+                if future.done():
+                    break
+                yield (
+                    "",  # risk analysis output (empty while processing)
+                    message  # status message
+                )
+                await asyncio.sleep(5)
+
+            # Get API response
+            response = future.result()
+            response.raise_for_status()
+            
+            risk_analysis = response.json().get("risk_analysis", "No risks identified")
+            
+            # Yield final results
+            yield (
+                risk_analysis,  # risk analysis output
+                "Risk analysis completed successfully!"  # status message
+            )
+
+    except requests.exceptions.RequestException as e:
+        error_message = f"API Error: {str(e)}"
+        if hasattr(e.response, 'text'):
+            error_message += f"\nResponse: {e.response.text}"
+        yield (
+            error_message,
+            "Error occurred during risk analysis"
+        )
     except Exception as e:
-        return f"Error in risk analysis: {str(e)}"
+        yield (
+            f"Error: {str(e)}",
+            "Error occurred during risk analysis"
+        )
 
 # Gradio UI
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
@@ -236,7 +295,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         
         extract_features_btn = gr.Button("Extract Features", variant="primary")
         
-        # Status message box
+        # Status message box (shared between document processing and feedback)
         status_box = gr.Textbox(
             label="Status",
             value="",
@@ -244,10 +303,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         )
         
         # Features output section
-        features_output = gr.Textbox(
+        features_output = gr.Markdown(
             label="Extracted Features",
-            lines=10,
-            interactive=False
+            value=""
         )
 
         # Feedback section (initially hidden)
@@ -258,13 +316,6 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                 placeholder="Enter your feedback here if you want the features to be re-evaluated..."
             )
             
-            # Add status box for feedback processing
-            feedback_status_box = gr.Textbox(
-                label="Feedback Status",
-                value="",
-                interactive=False
-            )
-            
             with gr.Row():
                 submit_feedback_btn = gr.Button("Submit Feedback", variant="secondary")
                 approve_features_btn = gr.Button("Approve Features", variant="primary")
@@ -272,10 +323,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # Risk Analysis section (initially hidden)
         with gr.Column(visible=False) as risk_section:
             analyze_risks_btn = gr.Button("Analyze Risks", variant="primary")
-            risk_analysis_output = gr.Textbox(
+            risk_analysis_output = gr.Markdown(
                 label="Risk Analysis Report",
-                lines=10,
-                interactive=False
+                value=""
             )
 
     # Event handlers
@@ -295,7 +345,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         inputs=[feedback_input, features_output],
         outputs=[
             features_output,
-            feedback_status_box
+            feedback_section,
+            risk_section,
+            status_box
         ]
     )
     
@@ -306,8 +358,13 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     )
 
     analyze_risks_btn.click(
-        analyze_risks,
-        outputs=[risk_analysis_output]
+        fn=analyze_risks_with_status,
+        inputs=[features_output],
+        outputs=[
+            risk_analysis_output,
+            status_box
+        ],
+        api_name="analyze_risks"
     )
 
 if __name__ == "__main__":
