@@ -27,4 +27,7 @@ Stay tuned for other interesting updates.
 
 ## Installation
 
+Step 1: pip install gradio requests python-dotenv asyncio pathlib aiohttp nest-asyncio
+Step 2: python RiskAssessment.py to run the App. 
+
 
